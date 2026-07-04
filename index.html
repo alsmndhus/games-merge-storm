@@ -310,6 +310,7 @@
   }
 
   var lastTime = null;
+  var rafId = null;
   function tick(now) {
     if (lastTime === null) lastTime = now;
     var dt = Math.min((now - lastTime) / 1000, 0.05);
@@ -331,8 +332,20 @@
 
     render();
     window.__GAME = { score: score, state: state };
-    requestAnimationFrame(tick);
+    rafId = requestAnimationFrame(tick);
   }
+
+  // pause the rAF loop when backgrounded: saves battery on mobile and avoids
+  // a stale lastTime producing a jump on return (dt is reset, not just clamped)
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      rafId = null;
+    } else if (rafId === null) {
+      lastTime = null;
+      rafId = requestAnimationFrame(tick);
+    }
+  });
 
   function handleTap(clientX) {
     ensureAudio();
@@ -361,6 +374,7 @@
 
   canvas.addEventListener('touchstart', function (e) {
     e.preventDefault();
+    if (e.touches.length > 1) return; // ignore extra fingers so a two-finger tap doesn't double-steer
     var t = e.changedTouches[0];
     handleTap(t.clientX);
   }, { passive: false });
@@ -370,12 +384,13 @@
   });
 
   window.addEventListener('resize', layout);
+  window.addEventListener('orientationchange', layout);
 
   grid = [];
   for (var i0 = 0; i0 < COLS; i0++) grid.push([]);
   layout();
   window.__GAME = { score: 0, state: 'ready' };
-  requestAnimationFrame(tick);
+  rafId = requestAnimationFrame(tick);
 })();
 </script>
 </body>
