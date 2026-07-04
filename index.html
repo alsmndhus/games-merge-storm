@@ -84,13 +84,21 @@
   var state = 'ready'; // ready | playing | gameover
   var score = 0;
   var maxValue = 0;
+  var bestScore = 0;
+  var gameoverAt = 0;
+
+  try { bestScore = parseInt(localStorage.getItem('mergeStormBest') || '0', 10) || 0; } catch (e) {}
+
+  function updateScoreDisplay() {
+    scoreEl.textContent = 'score ' + score + '   best ' + bestScore;
+  }
 
   function resetGame() {
     grid = [];
     for (var i = 0; i < COLS; i++) grid.push([]);
     score = 0;
     maxValue = 0;
-    scoreEl.textContent = 'score 0';
+    updateScoreDisplay();
     maxvalEl.textContent = '0';
     gameoverEl.style.opacity = '0';
     spawnFalling();
@@ -113,14 +121,19 @@
     }
     col_stack.push(v);
     score += v;
-    scoreEl.textContent = 'score ' + score;
+    if (score > bestScore) bestScore = score;
+    updateScoreDisplay();
     if (v > maxValue) {
       maxValue = v;
       maxvalEl.textContent = String(maxValue);
     }
     if (col_stack.length > ROWS) {
       state = 'gameover';
+      gameoverAt = performance.now();
       gameoverEl.style.opacity = '1';
+      hintEl.textContent = 'TAP TO RESTART';
+      hintEl.style.display = 'block';
+      try { localStorage.setItem('mergeStormBest', String(bestScore)); } catch (e) {}
     }
   }
 
@@ -199,15 +212,15 @@
   function handleTap(clientX) {
     if (state === 'ready') {
       hintEl.style.display = 'none';
-      state = 'playing';
       resetGame();
       state = 'playing';
       return;
     }
     if (state === 'gameover') {
-      state = 'ready';
-      hintEl.style.display = 'block';
-      hintEl.textContent = 'TAP TO START';
+      if (performance.now() - gameoverAt < 350) return; // grace period against accidental instant restart
+      hintEl.style.display = 'none';
+      resetGame();
+      state = 'playing';
       return;
     }
     if (state === 'playing') {
