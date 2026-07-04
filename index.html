@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>MERGE STORM</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: #0a0713; overflow: hidden; touch-action: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  #c { display: block; width: 100vw; height: 100vh; }
+  #label {
+    position: fixed; top: 3%; left: 0; right: 0; text-align: center;
+    color: rgba(255,255,255,0.5); font-weight: 600; font-size: 4vw;
+    letter-spacing: 0.3em; pointer-events: none; z-index: 10;
+  }
+  #maxval {
+    position: fixed; top: 6.5%; left: 0; right: 0; text-align: center;
+    color: #fff; font-weight: 800; font-size: 18vw; line-height: 1;
+    text-shadow: 0 0 20px rgba(255,150,90,0.7), 0 0 40px rgba(255,150,90,0.35);
+    pointer-events: none; z-index: 10; font-variant-numeric: tabular-nums;
+  }
+  #score {
+    position: fixed; top: 17%; left: 0; right: 0; text-align: center;
+    color: rgba(255,255,255,0.6); font-weight: 700; font-size: 4.2vw;
+    pointer-events: none; z-index: 10; font-variant-numeric: tabular-nums;
+  }
+  #hint {
+    position: fixed; bottom: 5%; left: 0; right: 0; text-align: center;
+    color: rgba(255,255,255,0.5); font-size: 4.3vw; font-weight: 600;
+    pointer-events: none; z-index: 10;
+  }
+  #gameover {
+    position: fixed; top: 40%; left: 0; right: 0; text-align: center;
+    color: #ff8f6b; font-weight: 800; font-size: 8vw; letter-spacing: 0.1em;
+    pointer-events: none; z-index: 11; opacity: 0; text-shadow: 0 0 20px rgba(255,100,60,0.6);
+  }
+</style>
+</head>
+<body>
+<div id="label">MERGE STORM</div>
+<div id="maxval">0</div>
+<div id="score">score 0</div>
+<div id="gameover">GAME OVER</div>
+<div id="hint">TAP TO START — LEFT / RIGHT TO STEER</div>
+<canvas id="c"></canvas>
+<script>
+(function () {
+  var canvas = document.getElementById('c');
+  var ctx = canvas.getContext('2d');
+  var maxvalEl = document.getElementById('maxval');
+  var scoreEl = document.getElementById('score');
+  var hintEl = document.getElementById('hint');
+  var gameoverEl = document.getElementById('gameover');
+
+  var COLS = 5;
+  var cellSize = 0, boardLeft = 0, boardTop = 0, boardWidthPx = 0, boardHeightPx = 0, ROWS = 0;
+  var dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  function layout() {
+    var w = window.innerWidth, h = window.innerHeight;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    boardTop = h * 0.24;
+    var bottomMargin = h * 0.1;
+    var availH = h - boardTop - bottomMargin;
+    var availW = w * 0.92;
+    boardWidthPx = Math.min(availW, availH * 0.62);
+    cellSize = boardWidthPx / COLS;
+    ROWS = Math.max(4, Math.floor(availH / cellSize));
+    boardHeightPx = cellSize * ROWS;
+    boardWidthPx = cellSize * COLS;
+    boardLeft = (w - boardWidthPx) / 2;
+  }
+
+  var grid; // grid[col] = array of stacked values, index 0 = bottom
+  var falling; // {col, y, value}
+  var state = 'ready'; // ready | playing | gameover
+  var score = 0;
+  var maxValue = 0;
+
+  function resetGame() {
+    grid = [];
+    for (var i = 0; i < COLS; i++) grid.push([]);
+    score = 0;
+    maxValue = 0;
+    scoreEl.textContent = 'score 0';
+    maxvalEl.textContent = '0';
+    gameoverEl.style.opacity = '0';
+    spawnFalling();
+  }
+
+  function spawnValue() {
+    return Math.random() < 0.1 ? 4 : 2;
+  }
+
+  function spawnFalling() {
+    falling = { col: Math.floor(COLS / 2), y: 0, value: spawnValue() };
+  }
+
+  function landBlock(col, value) {
+    var v = value;
+    var col_stack = grid[col];
+    while (col_stack.length && col_stack[col_stack.length - 1] === v) {
+      col_stack.pop();
+      v *= 2;
+    }
+    col_stack.push(v);
+    score += v;
+    scoreEl.textContent = 'score ' + score;
+    if (v > maxValue) {
+      maxValue = v;
+      maxvalEl.textContent = String(maxValue);
+    }
+    if (col_stack.length > ROWS) {
+      state = 'gameover';
+      gameoverEl.style.opacity = '1';
+    }
+  }
+
+  function colorForValue(v) {
+    var levels = Math.log2(v);
+    var hue = (205 + levels * 34) % 360;
+    return 'hsl(' + hue + ', 68%, 56%)';
+  }
+
+  function drawBoard() {
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 2;
+    for (var c = 0; c <= COLS; c++) {
+      var x = boardLeft + c * cellSize;
+      ctx.beginPath();
+      ctx.moveTo(x, boardTop);
+      ctx.lineTo(x, boardTop + boardHeightPx);
+      ctx.stroke();
+    }
+    ctx.strokeRect(boardLeft, boardTop, boardWidthPx, boardHeightPx);
+  }
+
+  function drawBlock(col, rowFromBottom, value, yPixelOverride) {
+    var x = boardLeft + col * cellSize;
+    var y = (yPixelOverride !== undefined)
+      ? yPixelOverride
+      : boardTop + boardHeightPx - (rowFromBottom + 1) * cellSize;
+    var pad = cellSize * 0.06;
+    ctx.fillStyle = colorForValue(value);
+    var r = cellSize * 0.14;
+    ctx.beginPath();
+    ctx.moveTo(x + pad + r, y + pad);
+    ctx.arcTo(x + cellSize - pad, y + pad, x + cellSize - pad, y + cellSize - pad, r);
+    ctx.arcTo(x + cellSize - pad, y + cellSize - pad, x + pad, y + cellSize - pad, r);
+    ctx.arcTo(x + pad, y + cellSize - pad, x + pad, y + pad, r);
+    ctx.arcTo(x + pad, y + pad, x + cellSize - pad, y + pad, r);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.font = '700 ' + Math.round(cellSize * 0.34) + 'px -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(value), x + cellSize / 2, y + cellSize / 2 + cellSize * 0.02);
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    drawBoard();
+    for (var c = 0; c < COLS; c++) {
+      for (var r = 0; r < grid[c].length; r++) drawBlock(c, r, grid[c][r]);
+    }
+    if (state === 'playing' && falling) drawBlock(falling.col, 0, falling.value, boardTop + falling.y);
+  }
+
+  var lastTime = null;
+  function tick(now) {
+    if (lastTime === null) lastTime = now;
+    var dt = Math.min((now - lastTime) / 1000, 0.05);
+    lastTime = now;
+
+    if (state === 'playing' && falling) {
+      var speed = cellSize * (0.55 + Math.min(score, 2000) / 2000 * 0.9);
+      falling.y += speed * dt;
+      var landingY = boardHeightPx - (grid[falling.col].length + 1) * cellSize;
+      if (falling.y >= landingY) {
+        landBlock(falling.col, falling.value);
+        if (state === 'playing') spawnFalling();
+      }
+    }
+
+    render();
+    window.__GAME = { score: score, state: state };
+    requestAnimationFrame(tick);
+  }
+
+  function handleTap(clientX) {
+    if (state === 'ready') {
+      hintEl.style.display = 'none';
+      state = 'playing';
+      resetGame();
+      state = 'playing';
+      return;
+    }
+    if (state === 'gameover') {
+      state = 'ready';
+      hintEl.style.display = 'block';
+      hintEl.textContent = 'TAP TO START';
+      return;
+    }
+    if (state === 'playing') {
+      var w = window.innerWidth;
+      if (clientX < w / 2) {
+        falling.col = Math.max(0, falling.col - 1);
+      } else {
+        falling.col = Math.min(COLS - 1, falling.col + 1);
+      }
+    }
+  }
+
+  canvas.addEventListener('touchstart', function (e) {
+    e.preventDefault();
+    var t = e.changedTouches[0];
+    handleTap(t.clientX);
+  }, { passive: false });
+
+  canvas.addEventListener('mousedown', function (e) {
+    handleTap(e.clientX);
+  });
+
+  window.addEventListener('resize', layout);
+
+  grid = [];
+  for (var i0 = 0; i0 < COLS; i0++) grid.push([]);
+  layout();
+  window.__GAME = { score: 0, state: 'ready' };
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
